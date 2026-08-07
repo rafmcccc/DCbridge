@@ -12,9 +12,9 @@ discord:
   authorized-user-id: ""
 
 server:
-  name: ValoriaMC
-  java-ip: valoriasmp.playwithbao.com
-  bedrock-ip: valoriasmp.playwithbao.com
+  name: exampleMC
+  java-ip: changeip.com
+  bedrock-ip: changeip.com
   java-port: 30418
   bedrock-port: 30418
 
@@ -41,6 +41,13 @@ whitelist:
   deny-message: "&cYou are not whitelisted. Verify on our Discord first!"
   allow-message: "&aWelcome back! You are whitelisted."
 
+checkhacks:
+  enabled: false
+  threshold: 0.6
+  cooldown-ms: 5000
+  webhook-url: ""
+  alert-template: "🚨 CheckHacks alert: {player} triggered {reason} | {details}"
+
 messages:
   form-title: "Whitelist Verification"
   platform-label: "Platform: Java or Bedrock?"
@@ -52,9 +59,13 @@ messages:
   embed-footer: "DCbridge Whitelist"
   verify-button: "Click here to verify and get whitelisted"
   done-button: "Done"
-  cancel-button: "Cancel"
-  approved-dm: "Your whitelist request for {username} ({platform}) has been approved!"
+  cancel-button: "Deny"
+  revoke-button: "Revoke"
+  submitted-dm: "Your whitelist request for {username} ({platform}) has been submitted and is pending review."
+  queue-dm: "Your whitelist request for {username} ({platform}) is now in the review queue."
+  approved-dm: "Your whitelist request for {username} ({platform}) has been approved! You have been granted the whitelist role."
   denied-dm: "Your whitelist request for {username} ({platform}) was denied."
+  revoked-dm: "Your whitelist request for {username} ({platform}) has been revoked."
 
 admin:
   remove-keywords: "remove ts,delete ts"

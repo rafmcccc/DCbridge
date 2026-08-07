@@ -105,6 +105,26 @@ public class BotConfig {
         return config.getString("whitelist.mode", "strict");
     }
 
+    public boolean isCheckHacksEnabled() {
+        return config.getBoolean("checkhacks.enabled", false);
+    }
+
+    public double getCheckHacksThreshold() {
+        return config.getDouble("checkhacks.threshold", 0.6);
+    }
+
+    public long getCheckHacksCooldownMs() {
+        return config.getLong("checkhacks.cooldown-ms", 5000L);
+    }
+
+    public String getCheckHacksWebhookUrl() {
+        return config.getString("checkhacks.webhook-url", "");
+    }
+
+    public String getCheckHacksAlertTemplate() {
+        return config.getString("checkhacks.alert-template", "🚨 CheckHacks alert: {player} triggered {reason} | {details}");
+    }
+
     public String getGeyserPrefix() {
         return config.getString("whitelist.geyser-prefix", ".");
     }
@@ -169,12 +189,28 @@ public class BotConfig {
         return config.getString("messages.cancel-button", "Cancel");
     }
 
+    public String getRevokeButtonLabel() {
+        return config.getString("messages.revoke-button", "Revoke");
+    }
+
+    public String getSubmittedDmTemplate() {
+        return config.getString("messages.submitted-dm", "Your whitelist request for {username} ({platform}) has been submitted and is pending review.");
+    }
+
+    public String getQueuedDmTemplate() {
+        return config.getString("messages.queue-dm", "Your whitelist request for {username} ({platform}) is now in the review queue.");
+    }
+
     public String getApprovedDmTemplate() {
         return config.getString("messages.approved-dm", "Your whitelist request for {username} ({platform}) has been approved!");
     }
 
     public String getDeniedDmTemplate() {
         return config.getString("messages.denied-dm", "Your whitelist request for {username} ({platform}) was denied.");
+    }
+
+    public String getRevokedDmTemplate() {
+        return config.getString("messages.revoked-dm", "Your whitelist request for {username} ({platform}) has been revoked.");
     }
 
     public String getRemoveKeywords() {

@@ -2,6 +2,7 @@ package dev.dcbridge.dcbridge;
 
 import dev.dcbridge.dcbridge.admin.MessageToolsListener;
 import dev.dcbridge.dcbridge.bot.DiscordManager;
+import dev.dcbridge.dcbridge.checkhacks.CheckHacksListener;
 import dev.dcbridge.dcbridge.bot.Presence;
 import dev.dcbridge.dcbridge.config.BotConfig;
 import dev.dcbridge.dcbridge.stats.StatsCommand;
@@ -32,6 +33,7 @@ public class DCbridgePlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new WhitelistListener(this, botConfig, whitelistManager), this);
         getServer().getPluginManager().registerEvents(new MessageToolsListener(this, botConfig), this);
+        getServer().getPluginManager().registerEvents(new CheckHacksListener(this, botConfig), this);
 
         getCommand("whitelist-setup").setExecutor(new dev.dcbridge.dcbridge.admin.WhitelistSetupCmd(this, botConfig, discordManager));
         getCommand("status").setExecutor(new StatsCommand(this, botConfig, statsUpdater));

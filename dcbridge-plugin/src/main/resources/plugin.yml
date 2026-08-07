@@ -1,7 +1,7 @@
 name: DCbridge
 main: dev.dcbridge.dcbridge.DCbridgePlugin
 version: 1.0.0
-api-version: 1.16
+api-version: '1.21'
 authors: [rafmcccc]
 description: Discord bot and whitelist plugin embedded into Paper.
 commands:

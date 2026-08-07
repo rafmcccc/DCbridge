@@ -24,6 +24,10 @@ public class WhitelistManager {
     }
 
     public void applyWhitelist(String username) {
+        if (username == null || username.isBlank()) {
+            plugin.getLogger().warning("Cannot apply whitelist: username is missing or empty.");
+            return;
+        }
         Bukkit.getScheduler().runTask(plugin, () -> {
             OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(username);
             offlinePlayer.setWhitelisted(true);
@@ -37,13 +41,46 @@ public class WhitelistManager {
     }
 
     public void handleApproval(String userId, String guildId, String username, String platform, String requestId) {
+        if (username == null || username.isBlank() || platform == null || platform.isBlank()) {
+            WhitelistStore.RequestRow request = store.getRequestById(requestId);
+            if (request != null) {
+                username = request.username();
+                platform = request.platform();
+            }
+        }
+        if (username == null || username.isBlank() || platform == null || platform.isBlank()) {
+            plugin.getLogger().warning("Cannot approve whitelist request " + requestId + " because username or platform is missing.");
+            store.updateRequestStatus(requestId, "failed", userId);
+            return;
+        }
         store.addWhitelistedPlayer(userId, guildId, username, platform, requestId);
         store.updateRequestStatus(requestId, "approved", userId);
         applyWhitelist(username);
     }
 
-    public void handleCancellation(String requestId, String handledBy) {
-        store.updateRequestStatus(requestId, "cancelled", handledBy);
+    public WhitelistStore.RequestRow getRequestById(String requestId) {
+        return store.getRequestById(requestId);
+    }
+
+    public String getQueueMessageId(String requestId) {
+        return store.getQueueMessageId(requestId);
+    }
+
+    public void handleDenial(String requestId, String handledBy) {
+        store.updateRequestStatus(requestId, "denied", handledBy);
+    }
+
+    public void revokeWhitelist(String requestId, String handledBy) {
+        var request = store.getRequestById(requestId);
+        if (request == null) {
+            store.updateRequestStatus(requestId, "revoked", handledBy);
+            return;
+        }
+        var active = store.getActiveWhitelistedByUsername(request.username());
+        if (active != null) {
+            store.revokeWhitelistedPlayer(active.id());
+        }
+        store.updateRequestStatus(requestId, "revoked", handledBy);
     }
 
     public void setQueueMessageId(String requestId, String messageId) {

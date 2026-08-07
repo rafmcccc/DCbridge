@@ -1,4 +1,5 @@
 .vscode
+dcbridge-plugin/target/
 minecraft-plugin/target/
 minecraft-plugin/.m2/
 *.db

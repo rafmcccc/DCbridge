@@ -114,12 +114,19 @@ public class WhitelistStore implements AutoCloseable {
         if (connection == null) {
             return null;
         }
-        String sql = "SELECT userId, guildId, username, platform FROM whitelist_requests WHERE id=? LIMIT 1";
+        String sql = "SELECT userId, guildId, username, platform, status, handledBy FROM whitelist_requests WHERE id=? LIMIT 1";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, id);
             try (ResultSet set = statement.executeQuery()) {
                 if (set.next()) {
-                    return new RequestRow(set.getString("userId"), set.getString("guildId"), set.getString("username"), set.getString("platform"));
+                    return new RequestRow(
+                            set.getString("userId"),
+                            set.getString("guildId"),
+                            set.getString("username"),
+                            set.getString("platform"),
+                            set.getString("status"),
+                            set.getString("handledBy")
+                    );
                 }
             }
         } catch (SQLException ex) {
@@ -128,7 +135,73 @@ public class WhitelistStore implements AutoCloseable {
         return null;
     }
 
-    public record RequestRow(String userId, String guildId, String username, String platform) {}
+    public record RequestRow(String userId, String guildId, String username, String platform, String status, String handledBy) {}
+
+    public WhitelistedPlayerRow getActiveWhitelistedByUsername(String username) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT id, userId, guildId, username, platform, requestId FROM whitelisted_players WHERE LOWER(username)=LOWER(?) AND status='active' LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    return new WhitelistedPlayerRow(
+                            set.getInt("id"),
+                            set.getString("userId"),
+                            set.getString("guildId"),
+                            set.getString("username"),
+                            set.getString("platform"),
+                            set.getString("requestId")
+                    );
+                }
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to fetch active whitelist entry: " + ex.getMessage());
+        }
+        return null;
+    }
+
+    public WhitelistedPlayerRow getActiveWhitelistedByUserId(String userId) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT id, userId, guildId, username, platform, requestId FROM whitelisted_players WHERE userId=? AND status='active' LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    return new WhitelistedPlayerRow(
+                            set.getInt("id"),
+                            set.getString("userId"),
+                            set.getString("guildId"),
+                            set.getString("username"),
+                            set.getString("platform"),
+                            set.getString("requestId")
+                    );
+                }
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to fetch active whitelist entry by userId: " + ex.getMessage());
+        }
+        return null;
+    }
+
+    public void revokeWhitelistedPlayer(int id) {
+        if (connection == null) {
+            return;
+        }
+        String sql = "UPDATE whitelisted_players SET status='removed', removedAt=? WHERE id=?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, System.currentTimeMillis());
+            statement.setInt(2, id);
+            statement.executeUpdate();
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to revoke whitelisted player: " + ex.getMessage());
+        }
+    }
+
+    public record WhitelistedPlayerRow(int id, String userId, String guildId, String username, String platform, String requestId) {}
 
     public void addWhitelistedPlayer(String userId, String guildId, String username, String platform, String requestId) {
         if (connection == null) {
@@ -213,6 +286,24 @@ public class WhitelistStore implements AutoCloseable {
         } catch (SQLException ex) {
             plugin.getLogger().warning("Failed to update queue message id: " + ex.getMessage());
         }
+    }
+
+    public String getQueueMessageId(String requestId) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT queueMessageId FROM whitelist_requests WHERE id=? LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, requestId);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    return set.getString("queueMessageId");
+                }
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to fetch queue message id: " + ex.getMessage());
+        }
+        return null;
     }
 
     public void close() {
