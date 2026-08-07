@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>net.sf.trove4j</groupId>
+  <artifactId>core</artifactId>
+  <version>3.1.0</version>
+  <name>Trove (core)</name>
+  <description>High performance collections for Java</description>
+  <url>https://bitbucket.org/trove4j/trove/src/master/</url>
+  <licenses>
+    <license>
+      <name>GNU Lesser General Public License 2.1</name>
+      <url>http://www.gnu.org/licenses/lgpl-2.1.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <name>Rob Eden</name>
+      <email>robeden1@gmail.com</email>
+    </developer>
+    <developer>
+      <name>Johan Parent</name>
+      <email>jparent@users.sourceforge.net</email>
+    </developer>
+    <developer>
+      <name>Jeff Randall</name>
+      <email>randall@uph.com</email>
+    </developer>
+    <developer>
+      <name>Eric D. Friedman</name>
+      <email>ericdf@users.sourceforge.net</email>
+    </developer>
+  </developers>
+  <scm>
+    <url>https://bitbucket.org/trove4j/trove/src/master/</url>
+  </scm>
+</project>

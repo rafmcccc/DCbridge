@@ -1,0 +1,5 @@
+.vscode
+minecraft-plugin/target/
+minecraft-plugin/.m2/
+*.db
+*.db-*

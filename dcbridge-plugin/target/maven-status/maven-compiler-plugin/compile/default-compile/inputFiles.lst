@@ -1,0 +1,13 @@
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/DCbridgePlugin.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/admin/MessageToolsListener.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/admin/WhitelistSetupCmd.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/bot/DiscordListener.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/bot/DiscordManager.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/bot/DiscordManagerHolder.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/bot/Presence.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/config/BotConfig.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/stats/StatsCommand.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/stats/StatsUpdater.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/whitelist/WhitelistListener.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/whitelist/WhitelistManager.java
+/home/rafmc/WorkFlow/MonyxMC/dcbridge-plugin/src/main/java/dev/dcbridge/dcbridge/whitelist/WhitelistStore.java

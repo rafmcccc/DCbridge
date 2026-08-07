@@ -1,0 +1,14 @@
+dev/dcbridge/dcbridge/DCbridgePlugin.class
+dev/dcbridge/dcbridge/admin/WhitelistSetupCmd.class
+dev/dcbridge/dcbridge/whitelist/WhitelistStore$RequestRow.class
+dev/dcbridge/dcbridge/whitelist/WhitelistManager.class
+dev/dcbridge/dcbridge/bot/DiscordListener.class
+dev/dcbridge/dcbridge/admin/MessageToolsListener.class
+dev/dcbridge/dcbridge/whitelist/WhitelistStore.class
+dev/dcbridge/dcbridge/whitelist/WhitelistListener.class
+dev/dcbridge/dcbridge/stats/StatsCommand.class
+dev/dcbridge/dcbridge/bot/DiscordManagerHolder.class
+dev/dcbridge/dcbridge/config/BotConfig.class
+dev/dcbridge/dcbridge/bot/DiscordManager.class
+dev/dcbridge/dcbridge/stats/StatsUpdater.class
+dev/dcbridge/dcbridge/bot/Presence.class
