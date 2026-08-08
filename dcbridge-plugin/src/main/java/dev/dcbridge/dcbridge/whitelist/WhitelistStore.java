@@ -288,6 +288,24 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
+    public String getLogMessageId(String requestId) {
+        if (connection == null) {
+            return null;
+        }
+        String sql = "SELECT logMessageId FROM whitelist_requests WHERE id=? LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, requestId);
+            try (ResultSet set = statement.executeQuery()) {
+                if (set.next()) {
+                    return set.getString("logMessageId");
+                }
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to fetch log message id: " + ex.getMessage());
+        }
+        return null;
+    }
+
     public String getQueueMessageId(String requestId) {
         if (connection == null) {
             return null;

@@ -7,15 +7,8 @@ import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.time.Instant;
-import java.util.UUID;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
-import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
@@ -36,11 +29,13 @@ public class DiscordListener extends ListenerAdapter {
     private final JavaPlugin plugin;
     private final BotConfig config;
     private final WhitelistManager whitelistManager;
+    private final DiscordManager discordManager;
 
     public DiscordListener(JavaPlugin plugin, BotConfig config, WhitelistManager whitelistManager, DiscordManager discordManager) {
         this.plugin = plugin;
         this.config = config;
         this.whitelistManager = whitelistManager;
+        this.discordManager = discordManager;
     }
 
     @Override
@@ -123,7 +118,8 @@ public class DiscordListener extends ListenerAdapter {
         String requestId = whitelistManager.submitRequest(event.getUser().getId(), event.getGuild().getId(), username, platform);
         plugin.getLogger().info("New whitelist submission " + requestId + " for " + username);
 
-        EmbedBuilder embed = buildRequestEmbed(event.getUser().getAsMention(), username, platform, "Pending", "Nobody yet", requestId, Color.YELLOW);
+        String requesterMention = event.getUser().getAsMention();
+        EmbedBuilder embed = buildRequestEmbed(requesterMention, username, platform, "Pending", "Nobody yet", requestId, Color.YELLOW);
 
         if (!config.getWhitelistLogChannelId().isBlank()) {
             TextChannel logChannel = event.getJDA().getTextChannelById(config.getWhitelistLogChannelId());
@@ -139,8 +135,7 @@ public class DiscordListener extends ListenerAdapter {
                 queueChannel.sendMessageEmbeds(embed.build())
                         .addActionRow(
                                 Button.success(reviewId + ":approve", config.getDoneButtonLabel()),
-                                Button.danger(reviewId + ":deny", config.getCancelButtonLabel()),
-                                Button.secondary(reviewId + ":revoke", config.getRevokeButtonLabel())
+                                Button.danger(reviewId + ":deny", config.getCancelButtonLabel())
                         )
                         .queue(message -> {
                             whitelistManager.setQueueMessageId(requestId, message.getId());
@@ -183,43 +178,45 @@ public class DiscordListener extends ListenerAdapter {
         int online = plugin.getServer().getOnlinePlayers().size();
         int max = plugin.getServer().getMaxPlayers();
         String version = plugin.getServer().getVersion();
-        boolean isOnline = online > 0;
-        String statusText = isOnline ? "ONLINE & READY" : "OFFLINE";
-        String playerPercent = max > 0 ? String.format("%.0f%%", online * 100.0 / max) : "0%";
-        String pingText = "N/A";
-        if (isOnline) {
-            int ping = measureServerPing(config.getJavaIp(), config.getJavaPort());
-            pingText = ping >= 0 ? ping + "ms" : "N/A";
+
+        // Use the cached ping measured async by StatsUpdater — never blocks the JDA thread
+        int ping = discordManager.getLastPingMs();
+        boolean isOnline = ping >= 0;
+
+        String statusLine = isOnline ? "🟢 **ONLINE**" : "🔴 **OFFLINE**";
+        String pingText = isOnline ? ping + " ms" : "—";
+
+        // Progress bar for player slots (10 segments)
+        String progressBar;
+        if (max > 0) {
+            int filled = (int) Math.round(online * 10.0 / max);
+            progressBar = "▓".repeat(filled) + "░".repeat(10 - filled)
+                    + String.format("  **%d / %d**", online, max);
+        } else {
+            progressBar = String.format("**%d / %d**", online, max);
         }
 
+        // Strip engine noise from version string (e.g. keep "1.21.1" only)
+        String cleanVersion = version.replaceAll(".*MC:\\s*", "").replace(")", "").trim();
+
         EmbedBuilder builder = new EmbedBuilder()
-                .setTitle(config.getServerName() + " Server Statistics")
-                .setDescription("**" + statusText + "**")
+                .setTitle("🖥️ " + config.getServerName() + " — Server Status")
+                .setDescription(statusLine)
                 .setColor(Color.decode("#" + (isOnline ? config.getColorOnline() : config.getColorOffline())))
-                .addField("Players Online", String.format("%d / %d players\n%s", online, max, playerPercent), true)
-                .addField("Connection", "Ping: " + pingText, true)
-                .addField("Version", version, true)
-                .addField("Java Edition", config.getJavaIp(), true)
-                .addField("Bedrock Edition", config.getBedrockIp(), true)
-                .addField("Port", String.format("%d (JE)\n%d (BE)", config.getJavaPort(), config.getBedrockPort()), true)
-                .setFooter("Auto-refresh • Every " + config.getStatsIntervalSeconds() + " Seconds")
+                .addField("👥 Players", progressBar, false)
+                .addField("📶 Ping", pingText, true)
+                .addField("🔧 Version", cleanVersion, true)
+                .addField("\u200B", "\u200B", true)
+                .addField("☕ Java IP", "`" + config.getJavaIp() + ":" + config.getJavaPort() + "`", true)
+                .addField("🪨 Bedrock IP", "`" + config.getBedrockIp() + ":" + config.getBedrockPort() + "`", true)
+                .addField("\u200B", "\u200B", true)
+                .setFooter("🔄 Auto-refreshes every " + config.getStatsIntervalSeconds() + "s")
                 .setTimestamp(Instant.now());
 
         if (!config.getGifUrl().isBlank()) {
             builder.setImage(config.getGifUrl());
         }
         return builder;
-    }
-
-    private int measureServerPing(String host, int port) {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), 1500);
-            long start = System.currentTimeMillis();
-            socket.getOutputStream().write(0);
-            return (int) (System.currentTimeMillis() - start);
-        } catch (IOException ex) {
-            return -1;
-        }
     }
 
     private void handleReview(ButtonInteractionEvent event) {
@@ -229,6 +226,13 @@ public class DiscordListener extends ListenerAdapter {
             event.reply("Invalid review button data. Please try again.").setEphemeral(true).queue();
             return;
         }
+
+        // Guard: admin-only
+        if (!hasAdminPermission(event)) {
+            event.reply("You do not have permission to review whitelist requests.").setEphemeral(true).queue();
+            return;
+        }
+
         String requestId = parts[2];
         String action = parts[3];
         var request = whitelistManager.getRequestById(requestId);
@@ -237,36 +241,65 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
 
+        String currentStatus = request.status();
+
+        // Guard: revoke is only valid on approved entries
+        if (action.equals("revoke") && !currentStatus.equals("approved")) {
+            event.reply("You can only revoke an approved whitelist entry.").setEphemeral(true).queue();
+            return;
+        }
+
+        // Guard: approve/deny only valid on pending
+        if ((action.equals("approve") || action.equals("deny")) && !currentStatus.equals("pending")) {
+            event.reply("This request has already been handled (status: " + currentStatus + ").").setEphemeral(true).queue();
+            return;
+        }
+
+        String requesterMention = "<@" + request.userId() + ">";
+        String reviewerMention = event.getUser().getAsMention();
+
         if (action.equals("approve")) {
             whitelistManager.handleApproval(event.getUser().getId(), event.getGuild().getId(), request.username(), request.platform(), requestId);
             assignWhitelistRoleToRequester(request.guildId(), request.userId());
-            updateQueueMessage(event, requestId, request.username(), request.platform(), "Approved", event.getUser().getAsMention());
+            // After approval: keep only the Revoke button so admins can unwhitelist later
+            updateQueueMessageWithRevoke(event, requestId, request.username(), request.platform(), "Approved", reviewerMention, requesterMention);
+            updateLogMessage(event, requestId, request.username(), request.platform(), "Approved", reviewerMention, requesterMention);
             sendUserDm(event.getJDA().getUserById(request.userId()), renderTemplate(config.getApprovedDmTemplate(), request.username(), request.platform()));
             event.reply("Request approved.").setEphemeral(true).queue();
         } else if (action.equals("deny")) {
             whitelistManager.handleDenial(requestId, event.getUser().getId());
-            updateQueueMessage(event, requestId, request.username(), request.platform(), "Denied", event.getUser().getAsMention());
+            // After denial: remove all buttons — no further action possible
+            updateQueueMessage(event, requestId, request.username(), request.platform(), "Denied", reviewerMention, requesterMention);
+            updateLogMessage(event, requestId, request.username(), request.platform(), "Denied", reviewerMention, requesterMention);
             sendUserDm(event.getJDA().getUserById(request.userId()), renderTemplate(config.getDeniedDmTemplate(), request.username(), request.platform()));
             event.reply("Request denied.").setEphemeral(true).queue();
         } else if (action.equals("revoke")) {
             whitelistManager.revokeWhitelist(requestId, event.getUser().getId());
             removeWhitelistRoleFromRequester(request.guildId(), request.userId());
-            updateQueueMessage(event, requestId, request.username(), request.platform(), "Revoked", event.getUser().getAsMention());
+            // After revoke: remove all buttons — entry is dead
+            updateQueueMessage(event, requestId, request.username(), request.platform(), "Revoked", reviewerMention, requesterMention);
+            updateLogMessage(event, requestId, request.username(), request.platform(), "Revoked", reviewerMention, requesterMention);
             sendUserDm(event.getJDA().getUserById(request.userId()), renderTemplate(config.getRevokedDmTemplate(), request.username(), request.platform()));
             event.reply("Whitelist access revoked.").setEphemeral(true).queue();
         }
     }
 
     private EmbedBuilder buildRequestEmbed(String userMention, String username, String platform, String status, String handledBy, String requestId, Color color) {
+        String statusEmoji = switch (status) {
+            case "Approved" -> "✅ Approved";
+            case "Denied"   -> "❌ Denied";
+            case "Revoked"  -> "🚫 Revoked";
+            default         -> "⏳ Pending";
+        };
         return new EmbedBuilder()
-                .setTitle("Whitelist Request")
-                .setDescription("Whitelist request status: " + status)
+                .setTitle("📋 Whitelist Request")
                 .setColor(color)
-                .addField("User", userMention, true)
-                .addField("Username", username, true)
-                .addField("Platform", platform, true)
-                .addField("Status", status, true)
-                .addField("Handled By", handledBy, true)
+                .addField("👤 Applicant", userMention, true)
+                .addField("🎮 Username", "`" + username + "`", true)
+                .addField("🖥️ Platform", platform, true)
+                .addField("📊 Status", statusEmoji, true)
+                .addField("🛡️ Handled By", handledBy, true)
+                .addField("\u200B", "\u200B", true) // spacing filler
                 .setFooter("Request ID: " + requestId)
                 .setTimestamp(Instant.now());
     }
@@ -377,7 +410,16 @@ public class DiscordListener extends ListenerAdapter {
         }, failure -> plugin.getLogger().warning("Failed to retrieve guild member for role removal: " + failure.getMessage()));
     }
 
-    private void updateQueueMessage(ButtonInteractionEvent event, String requestId, String username, String platform, String status, String handledBy) {
+    private Color statusColor(String status) {
+        return switch (status) {
+            case "Approved" -> Color.GREEN;
+            case "Denied"   -> Color.RED;
+            case "Revoked"  -> Color.decode("#FF8C00"); // dark orange
+            default         -> Color.YELLOW;
+        };
+    }
+
+    private void updateQueueMessage(ButtonInteractionEvent event, String requestId, String username, String platform, String status, String handledBy, String requesterMention) {
         String queueMessageId = whitelistManager.getQueueMessageId(requestId);
         if (queueMessageId == null || queueMessageId.isBlank()) {
             return;
@@ -391,19 +433,50 @@ public class DiscordListener extends ListenerAdapter {
             return;
         }
         queueChannel.retrieveMessageById(queueMessageId).queue(message -> {
-            EmbedBuilder updated = buildRequestEmbed(event.getUser().getAsMention(), username, platform, status, handledBy, requestId, status.equals("Approved") ? Color.GREEN : Color.RED);
+            EmbedBuilder updated = buildRequestEmbed(requesterMention, username, platform, status, handledBy, requestId, statusColor(status));
             message.editMessageEmbeds(updated.build()).setComponents().queue();
         }, failure -> plugin.getLogger().warning("Failed to update queue message for request " + requestId + ": " + failure.getMessage()));
     }
 
-    @Override
-    public void onMessageReceived(MessageReceivedEvent event) {
-        if (event.getAuthor().isBot()) return;
-        if (event.getMessage().getMentions().getUsers().contains(event.getJDA().getSelfUser())) {
-            String content = event.getMessage().getContentRaw();
-            if (content.contains("remove") || content.contains("delete")) {
-                event.getMessage().reply("Admin tool acknowledged. Remove request received.").queue();
-            }
+    private void updateQueueMessageWithRevoke(ButtonInteractionEvent event, String requestId, String username, String platform, String status, String handledBy, String requesterMention) {
+        String queueMessageId = whitelistManager.getQueueMessageId(requestId);
+        if (queueMessageId == null || queueMessageId.isBlank()) {
+            return;
         }
+        String queueChannelId = config.getWhitelistQueueChannelId();
+        if (queueChannelId.isBlank()) {
+            return;
+        }
+        TextChannel queueChannel = event.getJDA().getTextChannelById(queueChannelId);
+        if (queueChannel == null) {
+            return;
+        }
+        queueChannel.retrieveMessageById(queueMessageId).queue(message -> {
+            EmbedBuilder updated = buildRequestEmbed(requesterMention, username, platform, status, handledBy, requestId, statusColor(status));
+            String reviewId = "whitelist:review:" + requestId;
+            message.editMessageEmbeds(updated.build())
+                    .setComponents(ActionRow.of(Button.danger(reviewId + ":revoke", config.getRevokeButtonLabel())))
+                    .queue();
+        }, failure -> plugin.getLogger().warning("Failed to update queue message for request " + requestId + ": " + failure.getMessage()));
     }
+
+    private void updateLogMessage(ButtonInteractionEvent event, String requestId, String username, String platform, String status, String handledBy, String requesterMention) {
+        String logMessageId = whitelistManager.getLogMessageId(requestId);
+        if (logMessageId == null || logMessageId.isBlank()) {
+            return;
+        }
+        String logChannelId = config.getWhitelistLogChannelId();
+        if (logChannelId.isBlank()) {
+            return;
+        }
+        TextChannel logChannel = event.getJDA().getTextChannelById(logChannelId);
+        if (logChannel == null) {
+            return;
+        }
+        logChannel.retrieveMessageById(logMessageId).queue(message -> {
+            EmbedBuilder updated = buildRequestEmbed(requesterMention, username, platform, status, handledBy, requestId, statusColor(status));
+            message.editMessageEmbeds(updated.build()).queue();
+        }, failure -> plugin.getLogger().warning("Failed to update log message for request " + requestId + ": " + failure.getMessage()));
+    }
+
 }

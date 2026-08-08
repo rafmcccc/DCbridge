@@ -1,30 +1,72 @@
 package dev.dcbridge.dcbridge.admin;
 
 import dev.dcbridge.dcbridge.config.BotConfig;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
+import dev.dcbridge.dcbridge.whitelist.WhitelistManager;
+import dev.dcbridge.dcbridge.whitelist.WhitelistStore;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class MessageToolsListener implements Listener {
+/**
+ * /wl-remove <username>
+ *
+ * Looks up the active whitelisted entry by username, revokes it from the DB,
+ * removes the player from Bukkit's whitelist, and marks the linked request as revoked.
+ * Only the authorized user (set in config) or ops can run this.
+ */
+public class MessageToolsListener implements CommandExecutor {
+    private final JavaPlugin plugin;
     private final BotConfig config;
+    private final WhitelistManager whitelistManager;
 
-    public MessageToolsListener(JavaPlugin plugin, BotConfig config) {
+    public MessageToolsListener(JavaPlugin plugin, BotConfig config, WhitelistManager whitelistManager) {
+        this.plugin = plugin;
         this.config = config;
+        this.whitelistManager = whitelistManager;
     }
 
-    @EventHandler
-    public void onChat(AsyncPlayerChatEvent event) {
-        Player player = event.getPlayer();
-        String message = event.getMessage();
-        if (!player.getUniqueId().toString().equalsIgnoreCase(config.getAuthorizedUserId())) {
-            return;
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!isAuthorized(sender)) {
+            sender.sendMessage("§cYou do not have permission to use this command.");
+            return true;
         }
-        if (!message.contains("remove") && !message.contains("delete")) {
-            return;
+        if (args.length < 1) {
+            sender.sendMessage("§eUsage: /wl-remove <username>");
+            return true;
         }
-        event.setCancelled(true);
-        player.sendMessage("Admin message tool acknowledged.");
+        String username = args[0];
+        WhitelistStore.WhitelistedPlayerRow row = whitelistManager.getActiveWhitelistedByUsername(username);
+        if (row == null) {
+            sender.sendMessage("§cNo active whitelisted player found with username: " + username);
+            return true;
+        }
+        // Revoke via requestId so the request status is also updated
+        String requestId = row.requestId();
+        if (requestId != null && !requestId.isBlank()) {
+            whitelistManager.revokeWhitelist(requestId, sender.getName());
+        } else {
+            // No linked request (manually added entry) — revoke directly
+            whitelistManager.revokeDirectly(row.id(), row.username());
+        }
+        sender.sendMessage("§aRevoked whitelist for " + username + ".");
+        plugin.getLogger().info(sender.getName() + " revoked whitelist for " + username + " via /wl-remove.");
+        return true;
+    }
+
+    private boolean isAuthorized(CommandSender sender) {
+        if (sender.isOp()) {
+            return true;
+        }
+        // Also allow the Discord-authorized user ID to match if sender is a player
+        // (useful if the server owner has the same name configured)
+        String authorizedId = config.getAuthorizedUserId();
+        if (authorizedId != null && !authorizedId.isBlank()) {
+            if (sender instanceof org.bukkit.entity.Player player) {
+                return player.getUniqueId().toString().equalsIgnoreCase(authorizedId);
+            }
+        }
+        return false;
     }
 }

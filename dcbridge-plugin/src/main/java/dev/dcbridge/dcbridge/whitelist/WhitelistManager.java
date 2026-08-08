@@ -62,8 +62,22 @@ public class WhitelistManager {
         return store.getRequestById(requestId);
     }
 
+    public WhitelistStore.WhitelistedPlayerRow getActiveWhitelistedByUsername(String username) {
+        return store.getActiveWhitelistedByUsername(username);
+    }
+
+    /** Revoke a whitelist entry that has no linked request (e.g. manually added). */
+    public void revokeDirectly(int rowId, String username) {
+        store.revokeWhitelistedPlayer(rowId);
+        removeFromBukkitWhitelist(username);
+    }
+
     public String getQueueMessageId(String requestId) {
         return store.getQueueMessageId(requestId);
+    }
+
+    public String getLogMessageId(String requestId) {
+        return store.getLogMessageId(requestId);
     }
 
     public void handleDenial(String requestId, String handledBy) {
@@ -76,11 +90,26 @@ public class WhitelistManager {
             store.updateRequestStatus(requestId, "revoked", handledBy);
             return;
         }
+        // Try by username first; fall back to userId in case the username changed
         var active = store.getActiveWhitelistedByUsername(request.username());
+        if (active == null) {
+            active = store.getActiveWhitelistedByUserId(request.userId());
+        }
         if (active != null) {
             store.revokeWhitelistedPlayer(active.id());
+            removeFromBukkitWhitelist(active.username());
         }
         store.updateRequestStatus(requestId, "revoked", handledBy);
+    }
+
+    private void removeFromBukkitWhitelist(String username) {
+        if (username == null || username.isBlank()) {
+            return;
+        }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(username);
+            offlinePlayer.setWhitelisted(false);
+        });
     }
 
     public void setQueueMessageId(String requestId, String messageId) {

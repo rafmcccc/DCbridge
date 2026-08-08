@@ -24,19 +24,49 @@ public class CheckHacksListener implements Listener {
         this.config = config;
     }
 
+    // Patterns associated with sign-based exploits: colour/format codes injected via
+    // packets, excessively long lines, or null characters used in translation exploits.
+    private static final java.util.regex.Pattern SIGN_EXPLOIT_PATTERN =
+            java.util.regex.Pattern.compile("[§\u00a7\u0000]|\\{\"translate\"", java.util.regex.Pattern.CASE_INSENSITIVE);
+
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onSignChange(SignChangeEvent event) {
+        if (!config.isCheckHacksEnabled()) {
+            return;
+        }
+
         Player player = event.getPlayer();
         if (player == null) {
             return;
         }
 
-        if (!config.isCheckHacksEnabled()) {
+        // Bypass for ops and privileged players
+        if (player.hasPermission("dcbridge.checkhacks.bypass") || player.isOp()) {
             return;
         }
 
-        String reason = "Sign translation / text exploit attempt";
-        String details = "sign lines=" + String.join(" | ", event.getLines());
+        String[] lines = event.getLines();
+        boolean suspicious = false;
+        for (String line : lines) {
+            if (line == null) continue;
+            // Flag: contains formatting/colour codes or JSON translation component
+            if (SIGN_EXPLOIT_PATTERN.matcher(line).find()) {
+                suspicious = true;
+                break;
+            }
+            // Flag: single line far exceeds the Vanilla 15-char sign limit (packet hack)
+            if (line.length() > 64) {
+                suspicious = true;
+                break;
+            }
+        }
+
+        if (!suspicious) {
+            return;
+        }
+
+        String reason = "Sign text exploit attempt";
+        String details = "lines=" + String.join(" | ", lines);
         sendAlert(player, reason, details);
     }
 

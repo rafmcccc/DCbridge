@@ -16,8 +16,8 @@ public class DCbridgePlugin extends JavaPlugin {
     private BotConfig botConfig;
     private WhitelistStore whitelistStore;
     private WhitelistManager whitelistManager;
-    private DiscordManager discordManager;
     private StatsUpdater statsUpdater;
+    private DiscordManager discordManager;
     private Presence presence;
 
     @Override
@@ -27,16 +27,17 @@ public class DCbridgePlugin extends JavaPlugin {
         this.botConfig = new BotConfig(this);
         this.whitelistStore = new WhitelistStore(this, botConfig);
         this.whitelistManager = new WhitelistManager(this, botConfig, whitelistStore);
-        this.discordManager = new DiscordManager(this, botConfig, whitelistManager);
+        // StatsUpdater must be created before DiscordManager so the cached ping is available
         this.statsUpdater = new StatsUpdater(this, botConfig);
+        this.discordManager = new DiscordManager(this, botConfig, whitelistManager, statsUpdater);
         this.presence = new Presence(this, botConfig);
 
         getServer().getPluginManager().registerEvents(new WhitelistListener(this, botConfig, whitelistManager), this);
-        getServer().getPluginManager().registerEvents(new MessageToolsListener(this, botConfig), this);
         getServer().getPluginManager().registerEvents(new CheckHacksListener(this, botConfig), this);
 
         getCommand("whitelist-setup").setExecutor(new dev.dcbridge.dcbridge.admin.WhitelistSetupCmd(this, botConfig, discordManager));
         getCommand("status").setExecutor(new StatsCommand(this, botConfig, statsUpdater));
+        getCommand("wl-remove").setExecutor(new MessageToolsListener(this, botConfig, whitelistManager));
 
         discordManager.start();
         statsUpdater.start();

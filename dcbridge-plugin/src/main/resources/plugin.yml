@@ -13,3 +13,7 @@ commands:
     description: Manage the live server status embed.
     usage: /status setup|remove
     permission: dcbridge.admin
+  wl-remove:
+    description: Revoke a player's whitelist by username.
+    usage: /wl-remove <username>
+    permission: dcbridge.admin

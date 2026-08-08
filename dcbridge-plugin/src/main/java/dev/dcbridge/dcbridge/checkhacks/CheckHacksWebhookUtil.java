@@ -19,9 +19,9 @@ public class CheckHacksWebhookUtil {
                 .replace("{details}", details);
 
         String json = "{\"embeds\":[{"
-                + "\"title\":\"DCbridge CheckHacks Report\"," 
-                + "\"description\":\"" + escapeJson(description) + "\"," 
-                + "\"color\":16711680,"
+                + "\"title\":\"⚠️ DCbridge — CheckHacks Alert\","
+                + "\"description\":\"" + escapeJson(description) + "\","
+                + "\"color\":16744272,"  // 0xFF6810 — orange-red, less harsh than pure red
                 + "\"footer\":{\"text\":\"DCbridge CheckHacks\"},"
                 + "\"timestamp\":\"" + Instant.now() + "\""
                 + "}]}";
@@ -52,6 +52,6 @@ public class CheckHacksWebhookUtil {
         return value.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
-                .replace("\r", "\r");
+                .replace("\r", "\\r");
     }
 }
