@@ -1,6 +1,7 @@
 discord:
-  token: ""
-  client-id: ""
+  token: ""          # REQUIRED, paste your bot token here
+
+  # Filled automatically by /whitelist-setup 
   guild-id: ""
   channels:
     whitelist: ""
@@ -11,43 +12,19 @@ discord:
     whitelist-admin: ""
   authorized-user-id: ""
 
-server:
-  name: exampleMC
-  java-ip: changeip.com
-  bedrock-ip: changeip.com
-  java-port: 30418
-  bedrock-port: 30418
-
-stats:
-  embed-interval-seconds: 30
-  color-online: "b6cdff"
-  color-offline: "ff6b6b"
-  gif-url: "https://media.giphy.com/media/v1.../giphy.gif"
-
-presence:
-  update-interval-seconds: 20
-  offline-text: "Server Offline 🔴"
-  offline-activity-type: WATCHING
-  format: "{emoji} {name} | {online}/{max} Players | {ping}ms"
-  sub-servers:
-    - name: Survival
-      emoji: "🌲"
-
+# Whitelist behaviour
 whitelist:
   username-min: 3
   username-max: 16
-  mode: strict
+  mode: strict               # strict = exact match; loose = case-insensitive
   geyser-prefix: "."
   deny-message: "&cYou are not whitelisted. Verify on our Discord first!"
   allow-message: "&aWelcome back! You are whitelisted."
+  # Both settings below can also be toggled live in Discord with /whitelist settings, no restart needed.
+  auto-accept: false         # true = requests are approved immediately, skipping the review queue
+  single-submission: false   # true = a user can't submit again while they have a pending/approved request
 
-checkhacks:
-  enabled: false
-  threshold: 0.6
-  cooldown-ms: 5000
-  webhook-url: ""
-  alert-template: "🚨 CheckHacks alert: {player} triggered {reason} | {details}"
-
+# Discord message templates
 messages:
   form-title: "Whitelist Verification"
   platform-label: "Platform: Java or Bedrock?"
@@ -55,7 +32,7 @@ messages:
   username-label: "Minecraft Username"
   username-placeholder: "Your exact in-game username"
   embed-title: "Server Whitelist Verification"
-  embed-description: "Click the button below to verify and get whitelisted..."
+  embed-description: "Click the button below to verify and get whitelisted."
   embed-footer: "DCbridge Whitelist"
   verify-button: "Click here to verify and get whitelisted"
   done-button: "Done"
@@ -63,15 +40,16 @@ messages:
   revoke-button: "Revoke"
   submitted-dm: "Your whitelist request for {username} ({platform}) has been submitted and is pending review."
   queue-dm: "Your whitelist request for {username} ({platform}) is now in the review queue."
-  approved-dm: "Your whitelist request for {username} ({platform}) has been approved! You have been granted the whitelist role."
+  approved-dm: "Your whitelist request for {username} ({platform}) has been approved! You now have the whitelist role."
   denied-dm: "Your whitelist request for {username} ({platform}) was denied."
   revoked-dm: "Your whitelist request for {username} ({platform}) has been revoked."
 
+# Admin tools 
 admin:
   remove-keywords: "remove ts,delete ts"
   user-remove-keywords: "user remove ts"
   auto-delete-seconds: 5
 
+# Storage 
 data:
   sqlite-file: "whitelist.db"
-  stats-file: "stats.json"

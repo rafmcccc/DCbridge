@@ -1,19 +1,19 @@
 package dev.dcbridge.dcbridge.bot;
 
+import dev.dcbridge.dcbridge.admin.SetupListener;
 import dev.dcbridge.dcbridge.config.BotConfig;
 import dev.dcbridge.dcbridge.whitelist.WhitelistManager;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent;
 import net.dv8tion.jda.api.events.session.ReadyEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData;
+import net.dv8tion.jda.api.interactions.commands.build.SubcommandData;
 import net.dv8tion.jda.api.interactions.components.ActionRow;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.interactions.components.text.TextInput;
@@ -44,35 +44,125 @@ public class DiscordListener extends ListenerAdapter {
     }
 
     private void registerSlashCommands(ReadyEvent event) {
-        SlashCommandData whitelistSetup = Commands.slash("whitelist-setup", "Post the whitelist verification embed");
-        SlashCommandData status = Commands.slash("status", "Manage the live status embed")
-                .addOption(OptionType.STRING, "action", "setup or remove", true)
-                .addOption(OptionType.CHANNEL, "channel", "Channel for the status embed", false);
-        event.getJDA().updateCommands().addCommands(whitelistSetup, status).queue();
+        // /whitelist setup|remove|settings
+        SlashCommandData whitelist = Commands.slash("whitelist", "Manage the whitelist system")
+                .addSubcommands(
+                        new SubcommandData("setup",
+                                "Interactive setup wizard: configure channels, roles, and admin — no manual ID entry"),
+                        new SubcommandData("remove",
+                                "Remove the whitelist verification embed from the configured whitelist channel"),
+                        new SubcommandData("settings",
+                                "Configure auto-accept and one-request-per-user behavior")
+                );
+
+        // Replace global commands with the current set (this atomically removes any stale ones)
+        event.getJDA().updateCommands().addCommands(whitelist).queue(
+                cmds -> plugin.getLogger().info("[DCbridge] Slash commands registered: " + cmds.size()),
+                err  -> plugin.getLogger().severe("[DCbridge] Failed to register slash commands: " + err.getMessage())
+        );
+        // Also wipe any guild-scoped commands left over from previous plugin versions
+        for (net.dv8tion.jda.api.entities.Guild g : event.getJDA().getGuilds()) {
+            g.updateCommands().queue(
+                    ignored -> {},
+                    err -> plugin.getLogger().warning("[DCbridge] Could not clear guild commands for " + g.getName() + ": " + err.getMessage())
+            );
+        }
     }
 
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
-        if (event.getName().equals("whitelist-setup")) {
-            handleWhitelistSetup(event);
-        } else if (event.getName().equals("status")) {
-            handleStatus(event);
+        String cmd = event.getName();
+        String sub = event.getSubcommandName();
+
+        if (cmd.equals("whitelist")) {
+            if ("setup".equals(sub)) {
+                discordManager.getSetupListener().handleSetupCommand(event);
+            } else if ("remove".equals(sub)) {
+                handleWhitelistRemove(event);
+            } else if ("settings".equals(sub)) {
+                handleWhitelistSettings(event);
+            }
         }
     }
 
-    private void handleWhitelistSetup(SlashCommandInteractionEvent event) {
+    /** /whitelist settings — dashboard to toggle auto-accept and one-request-per-user. */
+    private void handleWhitelistSettings(SlashCommandInteractionEvent event) {
         if (!event.isFromGuild()) {
             event.reply("This command must be used in a server.").setEphemeral(true).queue();
             return;
         }
-        EmbedBuilder builder = new EmbedBuilder()
-                .setTitle(config.getEmbedTitle())
-                .setDescription(config.getEmbedDescription())
-                .setColor(Color.decode("#" + config.getColorOnline()))
-                .setFooter(config.getEmbedFooter());
-        event.replyEmbeds(builder.build())
-                .addActionRow(Button.primary("verify:open", config.getVerifyButtonLabel()))
+        if (!hasAdminPermission(event.getUser(), event.getMember())) {
+            event.reply("You need the whitelist admin role (or Administrator) to change these settings.").setEphemeral(true).queue();
+            return;
+        }
+        event.replyEmbeds(buildSettingsEmbed().build())
+                .addComponents(settingsButtons())
+                .setEphemeral(true)
                 .queue();
+    }
+
+    private EmbedBuilder buildSettingsEmbed() {
+        boolean autoAccept = config.isAutoAcceptEnabled();
+        boolean singleSubmission = config.isSingleSubmissionEnabled();
+        return new EmbedBuilder()
+                .setTitle("⚙️ Whitelist Settings")
+                .setColor(Color.decode("#b6cdff"))
+                .addField("Auto-Accept Requests",
+                        autoAccept
+                                ? "✅ **ON** — new requests are approved immediately and never enter the review queue."
+                                : "❌ **OFF** — an admin must approve each request in the queue channel.",
+                        false)
+                .addField("One Request Per User",
+                        singleSubmission
+                                ? "✅ **ON** — a user can't submit again while they have a pending or approved request."
+                                : "❌ **OFF** — users may submit as many requests as they like.",
+                        false)
+                .setFooter("Click a button below to toggle a setting");
+    }
+
+    private ActionRow settingsButtons() {
+        return ActionRow.of(
+                Button.primary("settings:toggle:auto-accept", "Toggle Auto-Accept"),
+                Button.primary("settings:toggle:single-submission", "Toggle One-Per-User")
+        );
+    }
+
+    private void handleSettingsToggle(ButtonInteractionEvent event) {
+        if (!hasAdminPermission(event)) {
+            event.reply("You do not have permission to change these settings.").setEphemeral(true).queue();
+            return;
+        }
+        String key = event.getComponentId().substring("settings:toggle:".length());
+        String configKey = switch (key) {
+            case "auto-accept" -> "whitelist.auto-accept";
+            case "single-submission" -> "whitelist.single-submission";
+            default -> null;
+        };
+        if (configKey == null) {
+            event.reply("Unknown setting.").setEphemeral(true).queue();
+            return;
+        }
+        boolean current = plugin.getConfig().getBoolean(configKey, false);
+        plugin.getConfig().set(configKey, !current);
+        plugin.saveConfig();
+        plugin.reloadConfig();
+        event.editMessageEmbeds(buildSettingsEmbed().build())
+                .setComponents(settingsButtons())
+                .queue();
+    }
+
+    /** /whitelist remove — clears the stored whitelist channel message ID (embed removal). */
+    private void handleWhitelistRemove(SlashCommandInteractionEvent event) {
+        if (!event.isFromGuild()) {
+            event.reply("This command must be used in a server.").setEphemeral(true).queue();
+            return;
+        }
+        // Clear the stored whitelist channel config so no embed is auto-reposted
+        plugin.getConfig().set("discord.channels.whitelist", "");
+        plugin.saveConfig();
+        plugin.reloadConfig();
+        event.reply("✅ Whitelist embed configuration cleared. The verification embed will no longer be auto-posted.")
+                .setEphemeral(true).queue();
     }
 
     @Override
@@ -81,6 +171,8 @@ public class DiscordListener extends ListenerAdapter {
             openModal(event);
         } else if (event.getComponentId().startsWith("whitelist:review:")) {
             handleReview(event);
+        } else if (event.getComponentId().startsWith("settings:toggle:")) {
+            handleSettingsToggle(event);
         }
     }
 
@@ -115,10 +207,41 @@ public class DiscordListener extends ListenerAdapter {
             event.reply("Username length is invalid.").setEphemeral(true).queue();
             return;
         }
+        if (whitelistManager.hasPendingRequest(event.getUser().getId())) {
+            event.reply("You already have a request waiting in the review queue. Please wait for it to be approved or denied before submitting again.")
+                    .setEphemeral(true).queue();
+            return;
+        }
+        if (config.isSingleSubmissionEnabled() && whitelistManager.hasOpenRequest(event.getUser().getId())) {
+            event.reply("You already have a pending or approved whitelist request. Ask an admin to revoke it before submitting again.")
+                    .setEphemeral(true).queue();
+            return;
+        }
+
         String requestId = whitelistManager.submitRequest(event.getUser().getId(), event.getGuild().getId(), username, platform);
         plugin.getLogger().info("New whitelist submission " + requestId + " for " + username);
 
+        boolean autoAccept = config.isAutoAcceptEnabled();
         String requesterMention = event.getUser().getAsMention();
+
+        if (autoAccept) {
+            // Skip the queue entirely — approve through the same path a manual approval uses.
+            whitelistManager.handleApproval(event.getUser().getId(), event.getGuild().getId(), username, platform, requestId);
+            assignWhitelistRoleToRequester(event.getGuild().getId(), event.getUser().getId());
+
+            EmbedBuilder embed = buildRequestEmbed(requesterMention, username, platform, "Approved", "Auto-Accepted", requestId, Color.GREEN);
+            if (!config.getWhitelistLogChannelId().isBlank()) {
+                TextChannel logChannel = event.getJDA().getTextChannelById(config.getWhitelistLogChannelId());
+                if (logChannel != null) {
+                    logChannel.sendMessageEmbeds(embed.build()).queue(message -> whitelistManager.setLogMessageId(requestId, message.getId()));
+                }
+            }
+
+            sendUserDm(event.getUser(), renderTemplate(config.getApprovedDmTemplate(), username, platform));
+            event.reply("Your request was automatically approved. Welcome!").setEphemeral(true).queue();
+            return;
+        }
+
         EmbedBuilder embed = buildRequestEmbed(requesterMention, username, platform, "Pending", "Nobody yet", requestId, Color.YELLOW);
 
         if (!config.getWhitelistLogChannelId().isBlank()) {
@@ -146,77 +269,6 @@ public class DiscordListener extends ListenerAdapter {
 
         sendUserDm(event.getUser(), renderTemplate(config.getSubmittedDmTemplate(), username, platform));
         event.reply("Your request has been submitted for review.").setEphemeral(true).queue();
-    }
-
-    private void handleStatus(SlashCommandInteractionEvent event) {
-        if (!event.isFromGuild()) {
-            event.reply("This command must be used in a server.").setEphemeral(true).queue();
-            return;
-        }
-        MessageChannel targetChannel = null;
-        var channelOption = event.getOption("channel");
-        if (channelOption != null) {
-            var optionChannel = channelOption.getAsChannel();
-            if (optionChannel instanceof MessageChannel) {
-                targetChannel = (MessageChannel) optionChannel;
-            }
-        } else if (event.getChannel() instanceof MessageChannel) {
-            targetChannel = (MessageChannel) event.getChannel();
-        }
-        if (targetChannel == null) {
-            event.reply("Unable to determine target channel for the status embed.").setEphemeral(true).queue();
-            return;
-        }
-        EmbedBuilder embed = buildStatusEmbed();
-        targetChannel.sendMessageEmbeds(embed.build()).queue(
-                ignored -> event.reply("Server status embed posted.").setEphemeral(true).queue(),
-                failure -> event.reply("Failed to post status embed: " + failure.getMessage()).setEphemeral(true).queue()
-        );
-    }
-
-    private EmbedBuilder buildStatusEmbed() {
-        int online = plugin.getServer().getOnlinePlayers().size();
-        int max = plugin.getServer().getMaxPlayers();
-        String version = plugin.getServer().getVersion();
-
-        // Use the cached ping measured async by StatsUpdater — never blocks the JDA thread
-        int ping = discordManager.getLastPingMs();
-        boolean isOnline = ping >= 0;
-
-        String statusLine = isOnline ? "🟢 **ONLINE**" : "🔴 **OFFLINE**";
-        String pingText = isOnline ? ping + " ms" : "—";
-
-        // Progress bar for player slots (10 segments)
-        String progressBar;
-        if (max > 0) {
-            int filled = (int) Math.round(online * 10.0 / max);
-            progressBar = "▓".repeat(filled) + "░".repeat(10 - filled)
-                    + String.format("  **%d / %d**", online, max);
-        } else {
-            progressBar = String.format("**%d / %d**", online, max);
-        }
-
-        // Strip engine noise from version string (e.g. keep "1.21.1" only)
-        String cleanVersion = version.replaceAll(".*MC:\\s*", "").replace(")", "").trim();
-
-        EmbedBuilder builder = new EmbedBuilder()
-                .setTitle("🖥️ " + config.getServerName() + " — Server Status")
-                .setDescription(statusLine)
-                .setColor(Color.decode("#" + (isOnline ? config.getColorOnline() : config.getColorOffline())))
-                .addField("👥 Players", progressBar, false)
-                .addField("📶 Ping", pingText, true)
-                .addField("🔧 Version", cleanVersion, true)
-                .addField("\u200B", "\u200B", true)
-                .addField("☕ Java IP", "`" + config.getJavaIp() + ":" + config.getJavaPort() + "`", true)
-                .addField("🪨 Bedrock IP", "`" + config.getBedrockIp() + ":" + config.getBedrockPort() + "`", true)
-                .addField("\u200B", "\u200B", true)
-                .setFooter("🔄 Auto-refreshes every " + config.getStatsIntervalSeconds() + "s")
-                .setTimestamp(Instant.now());
-
-        if (!config.getGifUrl().isBlank()) {
-            builder.setImage(config.getGifUrl());
-        }
-        return builder;
     }
 
     private void handleReview(ButtonInteractionEvent event) {
@@ -305,16 +357,20 @@ public class DiscordListener extends ListenerAdapter {
     }
 
     private boolean hasAdminPermission(ButtonInteractionEvent event) {
-        if (event.getUser().getId().equals(config.getAuthorizedUserId())) {
+        return hasAdminPermission(event.getUser(), event.getMember());
+    }
+
+    private boolean hasAdminPermission(net.dv8tion.jda.api.entities.User user, net.dv8tion.jda.api.entities.Member member) {
+        if (user.getId().equals(config.getAuthorizedUserId())) {
             return true;
         }
         if (config.getWhitelistAdminRoleId() == null || config.getWhitelistAdminRoleId().isBlank()) {
             return false;
         }
-        if (event.getMember() == null) {
+        if (member == null) {
             return false;
         }
-        return event.getMember().getRoles().stream().anyMatch(role -> role.getId().equals(config.getWhitelistAdminRoleId()));
+        return member.getRoles().stream().anyMatch(role -> role.getId().equals(config.getWhitelistAdminRoleId()));
     }
 
     private void sendUserDm(net.dv8tion.jda.api.entities.User user, String message) {

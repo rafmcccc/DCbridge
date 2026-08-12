@@ -1,13 +1,12 @@
 package dev.dcbridge.dcbridge.bot;
 
+import dev.dcbridge.dcbridge.admin.SetupListener;
 import dev.dcbridge.dcbridge.config.BotConfig;
-import dev.dcbridge.dcbridge.stats.StatsUpdater;
 import dev.dcbridge.dcbridge.whitelist.WhitelistManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.requests.GatewayIntent;
-import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.EnumSet;
@@ -16,14 +15,18 @@ public class DiscordManager {
     private final JavaPlugin plugin;
     private final BotConfig config;
     private final WhitelistManager whitelistManager;
-    private final StatsUpdater statsUpdater;
     private JDA jda;
+    private SetupListener setupListener;
 
-    public DiscordManager(JavaPlugin plugin, BotConfig config, WhitelistManager whitelistManager, StatsUpdater statsUpdater) {
+    public DiscordManager(JavaPlugin plugin, BotConfig config, WhitelistManager whitelistManager) {
         this.plugin = plugin;
         this.config = config;
         this.whitelistManager = whitelistManager;
-        this.statsUpdater = statsUpdater;
+        this.setupListener = new SetupListener(plugin, config);
+    }
+
+    public SetupListener getSetupListener() {
+        return setupListener;
     }
 
     public void start() {
@@ -34,10 +37,10 @@ public class DiscordManager {
         try {
             JDABuilder builder = JDABuilder.createDefault(
                     config.getDiscordToken(),
-                    EnumSet.of(GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS)
+                    EnumSet.of(GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT)
             );
-            builder.setMemberCachePolicy(MemberCachePolicy.ALL);
             builder.addEventListeners(new DiscordListener(plugin, config, whitelistManager, this));
+            builder.addEventListeners(setupListener);
             jda = builder.build();
             DiscordManagerHolder.setJda(jda);
             jda.awaitReady();
@@ -62,10 +65,5 @@ public class DiscordManager {
 
     public JDA getJda() {
         return jda;
-    }
-
-    /** Returns the last cached ping from StatsUpdater (measured async, never blocks). */
-    public int getLastPingMs() {
-        return statsUpdater.getLastPingMs();
     }
 }

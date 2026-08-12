@@ -2,8 +2,7 @@
 
 A Paper plugin that runs your Discord bot **inside** the Minecraft server.
 No second process, no hosting a bot separately, it starts with the server and
-shuts down with it. Handles whitelisting, live server-status embeds, presence,
-and a couple of lightweight anti-exploit/webhook checks.
+shuts down with it. Handles Discord-driven whitelisting.
 
 The name is the whole pitch: **DC ↔ bridge**.
 
@@ -11,8 +10,6 @@ The name is the whole pitch: **DC ↔ bridge**.
 
 ## Why run the bot in the server
 
-- Reads stats straight from Bukkit, online count, version, average ping, TPS.
-  No polling a remote status API.
 - Approving a whitelist request calls the real `setWhitelisted(true)`. The
   vanilla whitelist is the source of truth.
 - One process, one config file, one place to restart.
@@ -53,19 +50,18 @@ discord:
   roles:
     whitelist: ""
     whitelist-admin: ""
-  authorized-user-id: ""       # owner for the message-deletion tool
+  authorized-user-id: ""       # owner for admin commands
 ```
 
-4. Restart the server. Run `/status setup` in the channel you want the live
-   stats embed in, and `/whitelist-setup` to post the verification button.
+4. Restart the server. Run `/whitelist-setup` to run the interactive wizard
+   (picks channels/roles), which also posts the verification button.
 
 ## Commands
 
 | Command | Permission | What it does |
 |---|---|---|
-| `/status setup` | dcbridge.admin | Posts the auto-updating status embed in the current channel |
-| `/status remove` | dcbridge.admin | Removes the status embed |
-| `/whitelist-setup` | dcbridge.admin | Posts the whitelist verify embed + button |
+| `/whitelist-setup` | dcbridge.admin | Interactive Discord wizard to configure channels/roles and post the verify embed |
+| `/wl-remove` | dcbridge.admin | Revokes a player's whitelist by username |
 
 Serve a role named `dcbridge.admin` (or set it via LuckPerms) to use these.
 
@@ -94,48 +90,17 @@ A few deliberate decisions:
 | `whitelist.mode` | `strict` | `strict` kicks non-whitelisted; `notify` lets them in but warns |
 | `whitelist.geyser-prefix` | `.` | Strip this prefix for Bedrock names |
 | `whitelist.username-min/max` | 3 / 16 | Minecraft username length bounds |
-| `stats.embed-interval-seconds` | 30 | How often the status embed refreshes |
-| `stats.color-online/offline` | — | Embed accent colors |
-| `presence.format` | `{emoji} {name} \| {online}/{max} Players \| {ping}ms` | Bot "playing" text; tokens get swapped |
 | `admin.remove-keywords` | `remove ts,delete ts` | Mention the bot + keyword to delete a message |
 | `admin.user-remove-keywords` | `user remove ts` | Delete the bot's reply to a message |
 | `admin.auto-delete-seconds` | 5 | Auto-cleanup delay for confirmations |
 | `data.sqlite-file` | `whitelist.db` | Where requests/players are stored |
-| `data.stats-file` | `stats.json` | Guild → {channel, message} mapping |
 
 Message strings (`form-title`, `approved-dm`, `denied-dm`, …) are all in
 `config.yml`. DM templates take `{username}` and `{platform}`.
 
-## CheckHacks integration (anti-exploit)
-
-This bundles a small, self-contained module that watches for a couple of cheap
-server-side signals  sign-text tampering and teleport-distance moves, rate
-limited per player, and forwards hits to a Discord webhook if
-`checkhacks.webhook-url` is set. It's a lightweight heuristic, **not** a
-replacement for a real anti-cheat.
-
-```yaml
-checkhacks:
-  enabled: false
-  threshold: 0.6        # blocks travelled between moves above this are flagged
-  cooldown-ms: 5000
-  webhook-url: ""       # Discord webhook for alerts
-  alert-template: "🚨 CheckHacks alert: {player} triggered {reason} | {details}"
-```
-
-Only triggers for players lacking `dcbridge.checkhacks.bypass` and ops are always
-ignored.
-
-### Credit
-
-The detection approach here is inspired by the ideas in
-**[branduzzo/CheckHacks](https://github.com/branduzzo/CheckHacks)**   go check it
-out. If you want a full anti-cheat this repo doesn't claim to be one; use the
-real thing.
-
 ## Tech
 
-- [Paper](https://papermc.io) / Spigot, `api-version: 1.16` (Java 17+)
+- [Paper](https://papermc.io) / Spigot, `api-version: 1.21` (Java 17+)
 - [JDA](https://github.com/discord-jda/JDA) for the Discord client
 - `sqlite-jdbc` for persistence
 - Maven Shade to ship one jar

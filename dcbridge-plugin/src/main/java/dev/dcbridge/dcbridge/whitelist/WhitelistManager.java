@@ -72,6 +72,16 @@ public class WhitelistManager {
         removeFromBukkitWhitelist(username);
     }
 
+    /** Always blocks resubmission while the user has a request sitting in the queue, regardless of settings. */
+    public boolean hasPendingRequest(String userId) {
+        return store.hasPendingRequestForUser(userId);
+    }
+
+    /** Used to enforce the "one request per user" setting. */
+    public boolean hasOpenRequest(String userId) {
+        return store.hasOpenRequestForUser(userId);
+    }
+
     public String getQueueMessageId(String requestId) {
         return store.getQueueMessageId(requestId);
     }

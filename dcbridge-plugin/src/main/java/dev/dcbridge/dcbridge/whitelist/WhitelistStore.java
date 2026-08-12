@@ -110,6 +110,40 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
+    /** Used to always block resubmission while a request is still sitting in the review queue. */
+    public boolean hasPendingRequestForUser(String userId) {
+        if (connection == null) {
+            return false;
+        }
+        String sql = "SELECT 1 FROM whitelist_requests WHERE userId=? AND status='pending' LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet set = statement.executeQuery()) {
+                return set.next();
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to check pending whitelist request: " + ex.getMessage());
+            return false;
+        }
+    }
+
+    /** Used to enforce the "one request per user" setting: true if the user has a request that is still pending or was approved. */
+    public boolean hasOpenRequestForUser(String userId) {
+        if (connection == null) {
+            return false;
+        }
+        String sql = "SELECT 1 FROM whitelist_requests WHERE userId=? AND status IN ('pending','approved') LIMIT 1";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, userId);
+            try (ResultSet set = statement.executeQuery()) {
+                return set.next();
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to check existing whitelist request: " + ex.getMessage());
+            return false;
+        }
+    }
+
     public RequestRow getRequestById(String id) {
         if (connection == null) {
             return null;
