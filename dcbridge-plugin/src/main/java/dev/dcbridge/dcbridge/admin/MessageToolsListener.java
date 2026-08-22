@@ -56,17 +56,8 @@ public class MessageToolsListener implements CommandExecutor {
     }
 
     private boolean isAuthorized(CommandSender sender) {
-        if (sender.isOp()) {
-            return true;
-        }
-        // Also allow the Discord-authorized user ID to match if sender is a player
-        // (useful if the server owner has the same name configured)
-        String authorizedId = config.getAuthorizedUserId();
-        if (authorizedId != null && !authorizedId.isBlank()) {
-            if (sender instanceof org.bukkit.entity.Player player) {
-                return player.getUniqueId().toString().equalsIgnoreCase(authorizedId);
-            }
-        }
-        return false;
+        // Note: only OPs can run this. The Discord authorized-user-id is a Discord
+        // snowflake, not a Minecraft UUID, so it is not checked here.
+        return sender.isOp();
     }
 }

@@ -2,7 +2,8 @@
 
 A Paper plugin that runs your Discord bot **inside** the Minecraft server.
 No second process, no hosting a bot separately, it starts with the server and
-shuts down with it. Handles Discord-driven whitelisting.
+shuts down with it. Handles Discord-driven whitelisting with automatic
+persistence and recovery.
 
 The name is the whole pitch: **DC ↔ bridge**.
 
@@ -97,6 +98,19 @@ A few deliberate decisions:
 
 Message strings (`form-title`, `approved-dm`, `denied-dm`, …) are all in
 `config.yml`. DM templates take `{username}` and `{platform}`.
+
+## Reliability features (v3.1.0+)
+
+- **Whitelist restore on startup** — the SQLite database is the durable source of
+  truth. On every server start, all active whitelisted players are re-applied to
+  the vanilla whitelist, surviving restarts even if `whitelist.json` wasn't saved.
+- **SQLite auto-recovery** — if the database connection drops (lock, corruption,
+  disk hiccup), the plugin transparently reconnects and retries the query once
+  before failing closed. Legitimate whitelisted players are never kicked due to
+  transient DB errors.
+- **Async bot startup** — the Discord bot connects in the background without
+  blocking the server main thread. A bad token or network issue will never hang
+  the server boot.
 
 ## Tech
 

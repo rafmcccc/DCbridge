@@ -5,7 +5,6 @@ import dev.dcbridge.dcbridge.config.BotConfig;
 import dev.dcbridge.dcbridge.whitelist.WhitelistManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -43,14 +42,10 @@ public class DiscordManager {
             builder.addEventListeners(setupListener);
             jda = builder.build();
             DiscordManagerHolder.setJda(jda);
-            jda.awaitReady();
-            plugin.getLogger().info("Discord bot connected as " + jda.getSelfUser().getAsTag());
-            if (!config.getGuildId().isBlank()) {
-                Guild guild = jda.getGuildById(config.getGuildId());
-                if (guild != null) {
-                    plugin.getLogger().info("Connected to guild " + guild.getName());
-                }
-            }
+            // Build() is non-blocking — the bot connects in the background and logs its
+            // tag in the ReadyEvent. We must never block the server's main thread here:
+            // with a bad token the login would never complete and the server would hang.
+            plugin.getLogger().info("Discord bot is starting in the background...");
         } catch (Exception ex) {
             plugin.getLogger().severe("Failed to start Discord bot: " + ex.getMessage());
         }

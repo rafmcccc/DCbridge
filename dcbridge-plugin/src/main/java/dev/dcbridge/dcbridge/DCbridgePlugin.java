@@ -21,6 +21,7 @@ public class DCbridgePlugin extends JavaPlugin {
         this.botConfig = new BotConfig(this);
         this.whitelistStore = new WhitelistStore(this, botConfig);
         this.whitelistManager = new WhitelistManager(this, botConfig, whitelistStore);
+        whitelistManager.restoreWhitelist();
         this.discordManager = new DiscordManager(this, botConfig, whitelistManager);
 
         getServer().getPluginManager().registerEvents(new WhitelistListener(this, botConfig, whitelistManager), this);

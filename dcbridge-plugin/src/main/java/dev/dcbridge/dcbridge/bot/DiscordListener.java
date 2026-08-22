@@ -40,6 +40,7 @@ public class DiscordListener extends ListenerAdapter {
 
     @Override
     public void onReady(ReadyEvent event) {
+        plugin.getLogger().info("Discord bot connected as " + event.getJDA().getSelfUser().getAsTag());
         registerSlashCommands(event);
     }
 
@@ -199,6 +200,10 @@ public class DiscordListener extends ListenerAdapter {
     }
 
     private void handleSubmission(ModalInteractionEvent event, String platform, String username) {
+        if (!event.isFromGuild() || event.getGuild() == null) {
+            event.reply("This form must be used from a server channel.").setEphemeral(true).queue();
+            return;
+        }
         if (!platform.equalsIgnoreCase("Java") && !platform.equalsIgnoreCase("Bedrock")) {
             event.reply("Platform must be Java or Bedrock.").setEphemeral(true).queue();
             return;

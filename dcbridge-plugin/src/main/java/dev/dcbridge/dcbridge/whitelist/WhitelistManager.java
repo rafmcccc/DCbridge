@@ -6,6 +6,7 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.List;
 import java.util.UUID;
 
 public class WhitelistManager {
@@ -32,6 +33,18 @@ public class WhitelistManager {
             OfflinePlayer offlinePlayer = Bukkit.getOfflinePlayer(username);
             offlinePlayer.setWhitelisted(true);
         });
+    }
+
+    /** Re-assert every active player from the database into the vanilla whitelist on startup.
+     *  OfflinePlayer#setWhitelisted only touches the in-memory whitelist, so entries can be lost
+     *  across restarts if whitelist.json wasn't saved before shutdown. This makes the SQLite
+     *  database the durable source of truth again. */
+    public void restoreWhitelist() {
+        List<WhitelistStore.WhitelistedPlayerRow> active = store.getActiveWhitelistedPlayers();
+        for (WhitelistStore.WhitelistedPlayerRow row : active) {
+            applyWhitelist(row.username());
+        }
+        plugin.getLogger().info("Restored " + active.size() + " player(s) to the whitelist from the database.");
     }
 
     public String submitRequest(String userId, String guildId, String username, String platform) {

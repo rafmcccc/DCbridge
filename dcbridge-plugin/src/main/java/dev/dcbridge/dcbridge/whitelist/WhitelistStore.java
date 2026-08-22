@@ -3,7 +3,10 @@ package dev.dcbridge.dcbridge.whitelist;
 import dev.dcbridge.dcbridge.config.BotConfig;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.io.File;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class WhitelistStore implements AutoCloseable {
     private final JavaPlugin plugin;
@@ -19,10 +22,33 @@ public class WhitelistStore implements AutoCloseable {
     private void init() {
         try {
             Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException ex) {
+            plugin.getLogger().severe("SQLite JDBC driver not found (is sqlite-jdbc on the classpath?): " + ex.getMessage());
+            return;
+        }
+        reconnect();
+        if (connection != null) {
+            File dbFile = new File(plugin.getDataFolder(), config.getSqliteFileName());
+            plugin.getLogger().info("SQLite whitelist store ready at " + dbFile.getAbsolutePath()
+                    + (dbFile.isFile() ? " (" + dbFile.length() + " bytes)" : " (db file not created yet)"));
+        }
+    }
+
+    /** Open (or re-open) the single SQLite connection and ensure the schema exists.
+     *  Reused for auto-recovery: if any query ever fails, we reconnect before giving up so
+     *  that a transient hiccup can't permanently brick the whitelist check. */
+    private synchronized void reconnect() {
+        try {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (SQLException ignored) {
+                }
+            }
             String dbPath = plugin.getDataFolder().getAbsolutePath() + "/" + config.getSqliteFileName();
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
-            connection.setAutoCommit(true);
-            try (Statement statement = connection.createStatement()) {
+            Connection newConnection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
+            newConnection.setAutoCommit(true);
+            try (Statement statement = newConnection.createStatement()) {
                 statement.executeUpdate("PRAGMA journal_mode=WAL;");
                 statement.executeUpdate("PRAGMA busy_timeout=5000;");
                 statement.executeUpdate("""
@@ -54,30 +80,68 @@ public class WhitelistStore implements AutoCloseable {
                     )
                     """);
             }
-            plugin.getLogger().info("SQLite whitelist store initialized at " + dbPath);
-        } catch (Exception ex) {
-            plugin.getLogger().severe("Failed to initialize whitelist SQLite store: " + ex.getMessage());
+            connection = newConnection;
+            plugin.getLogger().info("SQLite whitelist store connection (re)established.");
+        } catch (SQLException ex) {
+            plugin.getLogger().severe("Failed to open SQLite whitelist store: " + ex.getMessage());
+            connection = null;
         }
     }
 
-    public boolean isActiveUsername(String username) {
+    /** True if there is a usable connection, transparently re-opening it if the old one died. */
+    private synchronized boolean ensureConnected() {
         if (connection == null) {
+            reconnect();
+            return connection != null;
+        }
+        try {
+            if (connection.isClosed()) {
+                reconnect();
+                return connection != null;
+            }
+        } catch (SQLException ex) {
+            connection = null;
+            reconnect();
+            return connection != null;
+        }
+        return true;
+    }
+
+    public synchronized boolean isActiveUsername(String username) {
+        if (!ensureConnected()) {
             return false;
         }
         String sql = "SELECT 1 FROM whitelisted_players WHERE status='active' AND LOWER(username)=LOWER(?) LIMIT 1";
+        try {
+            return executeActiveCheck(sql, username);
+        } catch (SQLException ex) {
+            // A transient lock/connection error must never kick a legitimately whitelisted
+            // player: reconnect and give the check one clean retry before failing closed.
+            plugin.getLogger().warning("Whitelist check for '" + username + "' failed (" + ex.getMessage() + "); reconnecting and retrying.");
+            reconnect();
+            if (!ensureConnected()) {
+                return false;
+            }
+            try {
+                return executeActiveCheck(sql, username);
+            } catch (SQLException ex2) {
+                plugin.getLogger().severe("Whitelist check for '" + username + "' failed after reconnect: " + ex2.getMessage());
+                return false;
+            }
+        }
+    }
+
+    private boolean executeActiveCheck(String sql, String username) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, username);
             try (ResultSet set = statement.executeQuery()) {
                 return set.next();
             }
-        } catch (SQLException ex) {
-            plugin.getLogger().warning("Failed to check whitelist username: " + ex.getMessage());
-            return false;
         }
     }
 
-    public void putPendingRequest(String id, String userId, String guildId, String username, String platform) {
-        if (connection == null) {
+    public synchronized void putPendingRequest(String id, String userId, String guildId, String username, String platform) {
+        if (!ensureConnected()) {
             return;
         }
         String sql = "INSERT INTO whitelist_requests(id,userId,guildId,username,platform,status,createdAt) VALUES (?,?,?,?,?,'pending',?)";
@@ -94,8 +158,8 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
-    public void updateRequestStatus(String id, String status, String handledBy) {
-        if (connection == null) {
+    public synchronized void updateRequestStatus(String id, String status, String handledBy) {
+        if (!ensureConnected()) {
             return;
         }
         String sql = "UPDATE whitelist_requests SET status=?, handledBy=?, handledAt=? WHERE id=?";
@@ -111,8 +175,8 @@ public class WhitelistStore implements AutoCloseable {
     }
 
     /** Used to always block resubmission while a request is still sitting in the review queue. */
-    public boolean hasPendingRequestForUser(String userId) {
-        if (connection == null) {
+    public synchronized boolean hasPendingRequestForUser(String userId) {
+        if (!ensureConnected()) {
             return false;
         }
         String sql = "SELECT 1 FROM whitelist_requests WHERE userId=? AND status='pending' LIMIT 1";
@@ -128,8 +192,8 @@ public class WhitelistStore implements AutoCloseable {
     }
 
     /** Used to enforce the "one request per user" setting: true if the user has a request that is still pending or was approved. */
-    public boolean hasOpenRequestForUser(String userId) {
-        if (connection == null) {
+    public synchronized boolean hasOpenRequestForUser(String userId) {
+        if (!ensureConnected()) {
             return false;
         }
         String sql = "SELECT 1 FROM whitelist_requests WHERE userId=? AND status IN ('pending','approved') LIMIT 1";
@@ -144,8 +208,8 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
-    public RequestRow getRequestById(String id) {
-        if (connection == null) {
+    public synchronized RequestRow getRequestById(String id) {
+        if (!ensureConnected()) {
             return null;
         }
         String sql = "SELECT userId, guildId, username, platform, status, handledBy FROM whitelist_requests WHERE id=? LIMIT 1";
@@ -171,8 +235,8 @@ public class WhitelistStore implements AutoCloseable {
 
     public record RequestRow(String userId, String guildId, String username, String platform, String status, String handledBy) {}
 
-    public WhitelistedPlayerRow getActiveWhitelistedByUsername(String username) {
-        if (connection == null) {
+    public synchronized WhitelistedPlayerRow getActiveWhitelistedByUsername(String username) {
+        if (!ensureConnected()) {
             return null;
         }
         String sql = "SELECT id, userId, guildId, username, platform, requestId FROM whitelisted_players WHERE LOWER(username)=LOWER(?) AND status='active' LIMIT 1";
@@ -196,8 +260,8 @@ public class WhitelistStore implements AutoCloseable {
         return null;
     }
 
-    public WhitelistedPlayerRow getActiveWhitelistedByUserId(String userId) {
-        if (connection == null) {
+    public synchronized WhitelistedPlayerRow getActiveWhitelistedByUserId(String userId) {
+        if (!ensureConnected()) {
             return null;
         }
         String sql = "SELECT id, userId, guildId, username, platform, requestId FROM whitelisted_players WHERE userId=? AND status='active' LIMIT 1";
@@ -221,8 +285,32 @@ public class WhitelistStore implements AutoCloseable {
         return null;
     }
 
-    public void revokeWhitelistedPlayer(int id) {
-        if (connection == null) {
+    public synchronized List<WhitelistedPlayerRow> getActiveWhitelistedPlayers() {
+        if (!ensureConnected()) {
+            return List.of();
+        }
+        String sql = "SELECT id, userId, guildId, username, platform, requestId FROM whitelisted_players WHERE status='active'";
+        List<WhitelistedPlayerRow> rows = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet set = statement.executeQuery()) {
+            while (set.next()) {
+                rows.add(new WhitelistedPlayerRow(
+                        set.getInt("id"),
+                        set.getString("userId"),
+                        set.getString("guildId"),
+                        set.getString("username"),
+                        set.getString("platform"),
+                        set.getString("requestId")
+                ));
+            }
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Failed to list active whitelist entries: " + ex.getMessage());
+        }
+        return rows;
+    }
+
+    public synchronized void revokeWhitelistedPlayer(int id) {
+        if (!ensureConnected()) {
             return;
         }
         String sql = "UPDATE whitelisted_players SET status='removed', removedAt=? WHERE id=?";
@@ -237,8 +325,8 @@ public class WhitelistStore implements AutoCloseable {
 
     public record WhitelistedPlayerRow(int id, String userId, String guildId, String username, String platform, String requestId) {}
 
-    public void addWhitelistedPlayer(String userId, String guildId, String username, String platform, String requestId) {
-        if (connection == null) {
+    public synchronized void addWhitelistedPlayer(String userId, String guildId, String username, String platform, String requestId) {
+        if (!ensureConnected()) {
             return;
         }
         try {
@@ -294,8 +382,8 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
-    public void setLogMessageId(String requestId, String messageId) {
-        if (connection == null) {
+    public synchronized void setLogMessageId(String requestId, String messageId) {
+        if (!ensureConnected()) {
             return;
         }
         String sql = "UPDATE whitelist_requests SET logMessageId=? WHERE id=?";
@@ -308,8 +396,8 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
-    public void setQueueMessageId(String requestId, String messageId) {
-        if (connection == null) {
+    public synchronized void setQueueMessageId(String requestId, String messageId) {
+        if (!ensureConnected()) {
             return;
         }
         String sql = "UPDATE whitelist_requests SET queueMessageId=? WHERE id=?";
@@ -322,8 +410,8 @@ public class WhitelistStore implements AutoCloseable {
         }
     }
 
-    public String getLogMessageId(String requestId) {
-        if (connection == null) {
+    public synchronized String getLogMessageId(String requestId) {
+        if (!ensureConnected()) {
             return null;
         }
         String sql = "SELECT logMessageId FROM whitelist_requests WHERE id=? LIMIT 1";
@@ -340,8 +428,8 @@ public class WhitelistStore implements AutoCloseable {
         return null;
     }
 
-    public String getQueueMessageId(String requestId) {
-        if (connection == null) {
+    public synchronized String getQueueMessageId(String requestId) {
+        if (!ensureConnected()) {
             return null;
         }
         String sql = "SELECT queueMessageId FROM whitelist_requests WHERE id=? LIMIT 1";
@@ -358,12 +446,14 @@ public class WhitelistStore implements AutoCloseable {
         return null;
     }
 
-    public void close() {
+    public synchronized void close() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
         } catch (SQLException ignored) {
+        } finally {
+            connection = null;
         }
     }
 }
